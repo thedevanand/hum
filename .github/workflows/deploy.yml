@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: for f in test/*.test.mjs; do node "$f"; done
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://hum.thedevs.in
+    steps:
+      - name: Trigger Dokploy
+        env:
+          HOOK: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::warning::DOKPLOY_WEBHOOK_URL secret not set, skipping deploy"; exit 0; fi
+          curl -fsS -X POST "$HOOK" \
+            -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
+            -d '{"ref":"refs/heads/main","head_commit":{"message":"${{ github.sha }}"}}'
