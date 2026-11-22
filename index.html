@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>hum · beat maker</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="preload" href="fonts/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header id="top">
+  <button id="home" class="cell brand" title="Back to your projects">hum<i class="cur"></i></button>
+  <div class="cell" title="Project name"><input id="pname" aria-label="Project name" maxlength="60" spellcheck="false"><button id="settings" class="cbtn sm" title="Project settings: cover, song details, file info" aria-label="Project settings"></button></div>
+  <div class="cell">
+    <button id="play" class="btn" title="Play / pause (Space)"></button>
+    <button id="stop" class="btn" title="Stop and rewind"></button>
+    <button id="rec" class="btn" title="Record from microphone"></button>
+    <button id="loop" class="btn" title="Loop playback"></button>
+  </div>
+  <div class="cell"><output id="time" title="Bar . beat . step">1.1.1</output></div>
+  <label class="cell" title="Tempo">bpm <input id="bpm" type="number" min="40" max="240" aria-label="Tempo in BPM"></label>
+  <label class="cell hide-md" title="Song key: used by autotune and the piano roll">key <select id="key" aria-label="Key"></select><select id="scale" aria-label="Scale"></select></label>
+  <div class="cell hide-sm">
+    <button id="undo" class="btn" title="Undo (Ctrl/⌘ Z)">undo</button>
+    <button id="redo" class="btn" title="Redo (Shift Ctrl/⌘ Z)">redo</button>
+  </div>
+  <span class="grow"></span>
+  <div class="cell last hide-md"><canvas id="meter" width="192" height="32" aria-hidden="true"></canvas></div>
+  <label class="cell hide-md" title="Master volume">vol <input id="master" type="range" min="0" max="1" step="0.01" aria-label="Master volume"></label>
+  <div class="cell" style="border-right:0">
+    <button id="media" class="btn hide-sm" title="Audio files used by this project">media</button>
+    <button id="savefile" class="btn hide-sm" title="Download this project as a .hum file (⌘S)">save .hum</button>
+    <button id="export" class="btn pri">export wav</button>
+  </div>
+</header>
+
+<aside id="lib" class="card">
+  <div class="ptitle"><b>sounds</b><span id="libcount"></span><span class="grow"></span><button id="import" class="btn sm" title="Import your own audio files">import</button></div>
+  <label class="search">/<input id="q" type="search" placeholder="search" aria-label="Search sounds"></label>
+  <div id="cats" class="tags"></div>
+  <div id="sounds"></div>
+  <button id="credits" class="credit" title="Where the sounds, font and icons come from">credits: sounds, font, icons</button>
+</aside>
+
+<section id="arr" class="card">
+  <div class="ptitle">
+    <b>tracks</b>
+    <div id="adders" class="adders"></div>
+    <span class="grow"></span>
+    <div class="zoom">zoom
+      <button id="zout" class="cbtn sm" title="Zoom out" aria-label="Zoom out">-</button>
+      <input id="zoom" class="slim" type="range" min="3" max="22" step="1" aria-label="Zoom">
+      <button id="zin" class="cbtn sm" title="Zoom in" aria-label="Zoom in">+</button>
+    </div>
+  </div>
+  <div id="scroll"><div id="inner"></div></div>
+</section>
+
+<section id="editor" class="card"></section>
+
+<aside id="box" class="card" tabindex="0" aria-label="Box: click, then paste a copied clip">
+  <div class="ptitle"><b>box</b><span id="boxcount"></span><span class="grow"></span><button id="store" class="btn sm" title="Store the selected clip in the box">store clip</button></div>
+  <div id="boxlist"></div>
+  <div class="credit">click here, then ⌘V to paste a copied clip · drag clips in, patterns out</div>
+</aside>
+
+<footer id="status">
+  <span id="ctx"></span>
+  <span id="hints"><kbd>space</kbd> play · <kbd>drag</kbd> sounds onto tracks · <kbd>⌘Z</kbd> undo · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copy, paste · <button id="keys" class="link"><kbd>⌘/</kbd> all shortcuts</button></span>
+  <span id="toast" role="status" aria-live="polite"></span>
+</footer>
+<main id="pm" hidden></main>
+<input id="rfile" type="file" accept="audio/*" hidden>
+<input id="hfile" type="file" accept=".hum,application/json" hidden>
+<input id="file" type="file" accept="audio/*" multiple hidden>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
