@@ -3,10 +3,16 @@ import { ICON } from './icons.js';
 import { KIND, pasteItem, readClipboard, storeItem, trackFor } from './clips.js';
 import { drawClip } from './draw.js';
 import { edit } from './edit.js';
-import { COLORS, S, ui } from './state.js';
+import { COLORS, G, S, saveG, ui } from './state.js';
 import { $, h, secs, toast } from './util.js';
 
 export let dragBox = null;
+/** Shows or hides the box sidebar. Remembered; the first time it starts open on wide windows only. */
+export function setBox(open, save = true) {
+  document.body.classList.toggle('nobox', !open); $('#boxbtn').ariaPressed = open; $('#boxbtn').classList.toggle('on', open);
+  if (save) { G.boxOpen = open; saveG(); }
+}
+export const boxOpen = () => !document.body.classList.contains('nobox');
 export function renderBox() {
   $('#boxcount').textContent = S.box.length ? String(S.box.length) : '';
   $('#boxlist').replaceChildren(...S.box.map(it => {

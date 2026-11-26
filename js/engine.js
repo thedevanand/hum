@@ -212,9 +212,10 @@ export function scheduleStep(g, S, step, t, mid) {
       }
       const at = step - c.start;
       if (at < 0 || at >= c.len) continue;
+      const shift = c.pitch || 0; // semitones for the whole pattern: notes transpose, drum hits play faster or slower (like a sampler)
       if (tr.type === 'drums') {
-        for (const row of tr.rows) if (c.steps[row.id]?.[at]) { const b = buffers.get(row.sound); if (b) playBuf(g, sharedFx(g, c.id + '|' + row.sound, dest, S, [S.mfx?.[row.sound], c.fx]), b, t, { gain: row.vol }); }
-      } else for (const n of c.notes) if (n.t === at) { const len = Math.min(n.d, c.len - n.t) * sd; playNote(g, sharedFx(g, c.id, dest, S, [c.fx]), tr, n.n, t, len); }
+        for (const row of tr.rows) if (c.steps[row.id]?.[at]) { const b = buffers.get(row.sound); if (b) playBuf(g, sharedFx(g, c.id + '|' + row.sound, dest, S, [S.mfx?.[row.sound], c.fx]), b, t, { gain: row.vol, rate: 2 ** (shift / 12) }); }
+      } else for (const n of c.notes) if (n.t === at) { const len = Math.min(n.d, c.len - n.t) * sd; playNote(g, sharedFx(g, c.id, dest, S, [c.fx]), tr, Math.min(127, Math.max(0, n.n + shift)), t, len); }
     }
   }
 }

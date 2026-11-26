@@ -17,6 +17,12 @@ function kit(ctx, t0, stopAt) {
       if (stopAt !== Infinity) o.stop(stopAt);
       oscs.push(o); return o;
     },
+    /** A looping buffer source (started `off` seconds into the loop), tracked so it can be stopped. */
+    loop(buf, off = 0) {
+      const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.start(t0, off);
+      if (stopAt !== Infinity) s.stop(stopAt);
+      oscs.push(s); return s;
+    },
     mix(m) {
       const i = ctx.createGain(), o = ctx.createGain(), dry = ctx.createGain(), wet = ctx.createGain();
       i.connect(dry).connect(o); wet.connect(o);
@@ -48,9 +54,41 @@ function impulse(ctx, size) {
   return irs.get(key);
 }
 
+// Pitch shifter: two delay lines whose delay slides at a steady rate (that is what shifts the pitch) and crossfade
+// so the point where each one jumps back is silent. PW = length of one slide. Buffers are shared by every chain.
+const PW = 0.08, shifters = new Map();
+function shifterBufs(ctx) {
+  if (!shifters.has(ctx.sampleRate)) {
+    const n = Math.round(ctx.sampleRate * PW), slide = ctx.createBuffer(1, n, ctx.sampleRate), fade = ctx.createBuffer(1, n, ctx.sampleRate);
+    const a = slide.getChannelData(0), b = fade.getChannelData(0);
+    for (let i = 0; i < n; i++) { a[i] = i / n; b[i] = 1 - Math.abs((2 * i) / n - 1); }
+    shifters.set(ctx.sampleRate, [slide, fade]);
+  }
+  return shifters.get(ctx.sampleRate);
+}
+
 const DIV = [[1, '1/16'], [2, '1/8'], [3, 'dotted 1/8'], [4, '1/4'], [6, 'dotted 1/4'], [8, '1/2']];
 // unit drives the read-out; log = slider moves in octaves (frequencies)
 export const FX = {
+  pitch: {
+    name: 'Pitch', desc: 'shift up or down in semitones without changing the speed',
+    params: [{ k: 'st', label: 'Shift', min: -12, max: 12, step: 1, unit: 'st', def: 5 }, { k: 'fine', label: 'Fine', min: -50, max: 50, step: 1, unit: 'cent', def: 0 },
+      { k: 'mix', label: 'Mix', min: 0, max: 1, step: 0.01, unit: 'pct', def: 1 }],
+    tail: () => 0.3,
+    build(ctx, p, k) {
+      const [slide, fade] = shifterBufs(ctx), m = k.mix(p.mix);
+      // a delay that falls by (ratio - 1) seconds per second plays the sound at that ratio; the 1.1 keeps it from going below zero
+      const slope = q => (1 - 2 ** ((q.st + q.fine / 100) / 12)) * PW;
+      const sweeps = [0, PW / 2].map(off => {
+        const d = ctx.createDelay(0.5), sweep = ctx.createGain(), win = ctx.createGain();
+        d.delayTime.value = PW * 1.1; sweep.gain.value = slope(p); win.gain.value = 0;
+        k.loop(slide, off).connect(sweep).connect(d.delayTime); k.loop(fade, off).connect(win.gain);
+        m.in.connect(d); d.connect(win).connect(m.wet);
+        return sweep;
+      });
+      return k.done({ in: m.in, out: m.out, set: p => { sweeps.forEach(s => k.ramp(s.gain, slope(p))); m.set(p.mix); } });
+    },
+  },
   filter: {
     name: 'Filter', desc: 'low-pass, high-pass or band-pass with resonance',
     params: [{ k: 'type', label: 'Type', options: [['lowpass', 'low-pass'], ['highpass', 'high-pass'], ['bandpass', 'band-pass']], def: 'lowpass' },
@@ -215,7 +253,7 @@ export const FX = {
     },
   },
 };
-export const FX_ORDER = ['filter', 'eq', 'compressor', 'drive', 'crush', 'tape', 'echo', 'reverb', 'chorus', 'flanger', 'phaser', 'tremolo', 'autopan', 'wobble', 'ringmod', 'widen'];
+export const FX_ORDER = ['pitch', 'filter', 'eq', 'compressor', 'drive', 'crush', 'tape', 'echo', 'reverb', 'chorus', 'flanger', 'phaser', 'tremolo', 'autopan', 'wobble', 'ringmod', 'widen'];
 
 export const defaultsOf = def => Object.fromEntries(def.params.map(q => [q.k, q.def]));
 
@@ -233,6 +271,9 @@ export const FACTORY = [
   ['Wide pad', [['widen', { width: 18 }], ['chorus', { rate: 0.6, depth: 0.5, mix: 0.45 }]]],
   ['Chopper', [['tremolo', { rate: 8, depth: 1, shape: 'square' }], ['autopan', { rate: 2, depth: 0.9 }]]],
   ['Jet', [['flanger', { rate: 0.2, depth: 0.9, feedback: 0.7, mix: 0.6 }]]],
+  ['Chipmunk', [['pitch', { st: 9, fine: 0, mix: 1 }]]],
+  ['Deep voice', [['pitch', { st: -6, fine: 0, mix: 1 }], ['eq', { low: 3, mid: 0, high: -2 }]]],
+  ['Octave shimmer', [['pitch', { st: 12, fine: 0, mix: 0.4 }], ['reverb', { size: 3.5, damp: 6000, mix: 0.5 }]]],
 ];
 
 // ---------- chains ----------

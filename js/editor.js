@@ -5,16 +5,20 @@ import { ICON } from './icons.js';
 import { deleteClip, dropOnPattern, duplicateClip, fitBars } from './clips.js';
 import { param, range } from './controls.js';
 import { drawWave, redrawClip } from './draw.js';
-import { changed, edit, seek, snap } from './edit.js';
+import { changed, edit, seek, selClips, snap } from './edit.js';
 import { renderFx } from './fxpanel.js';
 import { dragId } from './library.js';
 import { COLORS, HI, LO, RH, S, SW, T, selClip, soundName, trackIcon, ui, undo } from './state.js';
 import { keepSound, loadAssets } from './storage.js';
-import { $, clamp, drag, h, ico, pct, secs, toast, uid } from './util.js';
+import * as tiles from './tiles.js';
+import { css } from './theme.js';
+import { fitDelta } from './tilemath.js';
+import { $, MAC, clamp, drag, h, ico, pct, secs, toast, uid } from './util.js';
 
 export const ed = $('#editor');
 const emptyState = (title, text) => h('div', { className: 'empty' }, h('b', { textContent: title }), text);
 export function renderEditor() {
+  tiles.view.mark = tiles.view.bar = null;
   const t = T(ui.tid), c = selClip();
   $('#ctx').textContent = t ? t.name + (c ? ' › ' + (c.buf ? soundName(c.buf) : t.type === 'drums' ? 'beat' : 'melody') + (ui.sel.size > 1 ? ` (+${ui.sel.size - 1} selected)` : '') : '') : 'hum';
   if (!t) return ed.replaceChildren(emptyState('no tracks yet', 'Add a track above to start your song.'));
@@ -22,7 +26,15 @@ export function renderEditor() {
   const nfx = (c?.fx?.length || 0) + (t.fx?.length || 0);
   const tabs = h('div', { className: 'etabs', role: 'tablist' }, [['edit', 'edit'], ['fx', nfx ? `fx · ${nfx}` : 'fx']].map(([k, label]) =>
     h('button', { className: 'etab' + (ui.tab === k ? ' on' : ''), role: 'tab', ariaSelected: ui.tab === k, textContent: label, onclick: () => { ui.tab = k; renderEditor(); } })));
-  if (ui.tab === 'fx') return ed.replaceChildren(tabs, renderFx());
+  if (ui.tab === 'fx') { // clicking an effect re-renders: keep the lists where they were
+    const lib = ed.querySelector('.fxlib')?.scrollTop, chain = ed.querySelector('.fxchain');
+    const [left, top] = [chain?.scrollLeft, chain?.scrollTop];
+    ed.replaceChildren(tabs, renderFx());
+    if (lib) ed.querySelector('.fxlib').scrollTop = lib;
+    const now = ed.querySelector('.fxchain');
+    if (now && ui.fxJump) { now.scrollLeft = now.scrollWidth; ui.fxJump = false; } else if (now && chain) now.scrollTo(left, top);
+    return;
+  }
   const def = t.inst && { ...E.INSTRUMENTS[t.inst], ...t.synth }, tweak = (k, v) => (t.synth = { ...t.synth, [k]: v });
   const sub = t.type === 'drums' ? `Drum machine · ${t.rows.length} sounds` : t.type === 'inst' ? (def.sampler ? 'Sampled instrument' : 'Synthesizer') : `Audio · ${t.clips.length} clip${t.clips.length === 1 ? '' : 's'}`;
   const head = h('div', { className: 'ehead' },
@@ -31,6 +43,7 @@ export function renderEditor() {
       Object.entries(E.INSTRUMENTS).map(([k, d]) => h('option', { value: k, textContent: d.name, selected: k === t.inst })))),
     param('Reverb', t.reverb, [0, 1, 0.01], v => (t.reverb = v)),
     param('Echo', t.echo, [0, 1, 0.01], v => (t.echo = v)),
+    c && t.type !== 'audio' && param('Pitch', c.pitch || 0, [-24, 24, 1], v => (selClips().length ? selClips() : [c]).forEach(x => (x.pitch = v)), v => (v > 0 ? '+' : '') + v + ' st'),
     h('span', { className: 'grow' }),
     c && h('button', { className: 'btn sm', title: 'Duplicate clip (Ctrl/⌘ D)', onclick: duplicateClip }, ico('copy'), 'Duplicate'),
     c && h('button', { className: 'btn sm', title: 'Delete clip (Delete)', onclick: deleteClip }, ico('trash'), 'Delete'),
@@ -40,23 +53,26 @@ export function renderEditor() {
       param('Attack', def.a, [0.002, 1, 0.002], v => tweak('a', v), secs),
       param('Release', def.r, [0.05, 2, 0.01], v => tweak('r', v), secs),
       param('Tone', def.cut, [200, 8000, 50], v => tweak('cut', v), v => (v / 1000).toFixed(1) + 'k')));
-  const old = ed.querySelector('.roll'), keep = old && old.dataset.cid === c?.id && [old.scrollLeft, old.scrollTop];
+  const old = ed.querySelector('.roll, .steps'), keep = old && old.dataset.cid === c?.id && [old.scrollLeft, old.scrollTop];
   const body = !c ? (t.type === 'audio' ? emptyState('Nothing to edit yet', 'Drop a sound on this track, import a file, or press record.')
       : emptyState('Pick a pattern', 'Click one in the timeline, or double-click an empty spot to add a new one.'))
     : t.type === 'drums' ? stepEditor(t, c) : t.type === 'inst' ? pianoRoll(t, c) : waveEditor(t, c);
-  ed.replaceChildren(tabs, head, body);
+  ed.replaceChildren(...[tabs, head, c && t.type !== 'audio' && tiles.bar(t, c), body].filter(Boolean));
+  tiles.refresh();
   if (body.classList.contains('roll')) {
     const mid = c.notes.length ? c.notes.reduce((s, n) => s + n.n, 0) / c.notes.length : 62;
     body.scrollTo(...(keep || [0, (HI - mid) * RH - body.clientHeight / 2]));
-  }
+  } else if (keep && body.classList.contains('steps')) body.scrollTo(...keep);
 }
 
 function hit(t, row) {
   const b = E.buffers.get(row.sound);
   if (b) { E.ac.resume(); E.playBuf(E.live, E.trackIn(E.live, t.id).in, b, E.ac.currentTime, { gain: row.vol }); }
 }
+const mod = e => e.shiftKey || e.metaKey || (e.ctrlKey && !MAC); // held = select instead of paint
 function stepEditor(t, c) {
-  const rowOf = id => t.rows.find(r => r.id === id);
+  tiles.own(c);
+  const rowOf = id => t.rows.find(r => r.id === id), rowIdx = id => t.rows.findIndex(r => r.id === id);
   let val = true;
   const set = pad => {
     const { r, i } = pad.dataset, arr = (c.steps[r] ||= []);
@@ -65,13 +81,43 @@ function stepEditor(t, c) {
     if (val) { pad.classList.remove('pop'); void pad.offsetWidth; pad.classList.add('pop'); hit(t, rowOf(r)); }
   };
   const done = () => { changed(true); redrawClip(t, c); };
+  const paint = () => { // sync every pad with the data and the selection
+    for (const pad of wrap.querySelectorAll('.pad')) {
+      const { r, i } = pad.dataset, on = !!c.steps[r]?.[i];
+      pad.classList.toggle('on', on); pad.ariaPressed = on; pad.classList.toggle('sel', on && tiles.sel.set.has(tiles.key(r, i)));
+    }
+  };
+  tiles.view.mark = paint;
+  // drag a selected pad: the whole selection moves, snapping to pads and rows
+  const moveGroup = pad => {
+    const items = tiles.selected(t, c), base = JSON.parse(JSON.stringify(c.steps)), from = { i: +pad.dataset.i, ri: rowIdx(pad.dataset.r) };
+    let moved = false, last = '';
+    drag(ev => {
+      const p = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.pad');
+      if (!p || !wrap.contains(p)) return;
+      const di = +p.dataset.i - from.i, dr = rowIdx(p.dataset.r) - from.ri;
+      if (!moved && !di && !dr) return;
+      if (!moved) { moved = true; snap(); }
+      if (di + ',' + dr === last) return;
+      last = di + ',' + dr; tiles.movePads(t, c, items, base, di, dr); paint(); tiles.view.bar?.();
+    }, () => { if (moved) done(); else { tiles.clear(); snap(); val = false; set(pad); done(); } }); // a click without moving switches the pad off, as before
+  };
   const gap = i => (i && i % 16 === 0 ? ' bar' : '');
   const unmark = () => { for (const el of ed.querySelectorAll('.over')) el.classList.remove('over'); };
   const wrap = h('div', {
     className: 'steps',
+    data: { cid: c.id },
     onpointerdown: e => {
       const pad = e.target.closest('.pad');
-      if (!pad || e.button) return;
+      if (e.button) return;
+      if (pad) tiles.cursor(c, +pad.dataset.i);
+      if (mod(e)) { // select: drag a box, or click a pad
+        const key = pad?.classList.contains('on') ? tiles.key(pad.dataset.r, pad.dataset.i) : null;
+        return tiles.marquee(e, r => [...wrap.querySelectorAll('.pad.on')].filter(p => tiles.touches(p, r)).map(p => tiles.key(p.dataset.r, p.dataset.i)), key);
+      }
+      if (!pad) return tiles.clear();
+      if (pad.classList.contains('on') && tiles.sel.set.has(tiles.key(pad.dataset.r, pad.dataset.i))) return moveGroup(pad);
+      tiles.clear();
       snap(); val = !pad.classList.contains('on'); set(pad);
       drag(ev => { const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.pad'); if (el && wrap.contains(el)) set(el); }, done);
     },
@@ -107,9 +153,12 @@ function stepEditor(t, c) {
 const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const ping = (t, n) => { E.ac.resume(); E.playNote(E.live, E.trackIn(E.live, t.id).in, t, n, E.ac.currentTime, 0.3); };
 function pianoRoll(t, c) {
+  tiles.own(c);
   const pitches = Array.from({ length: HI - LO + 1 }, (_, i) => HI - i), y = n => (HI - n) * RH;
   const place = (el, n) => { el.style.cssText = `left:${n.t * SW}px;top:${y(n.n)}px;width:${Math.max(6, n.d * SW - 2)}px`; return el; };
-  const noteEl = n => place(h('div', { className: 'note' }), n);
+  const noteOf = new Map(), elOf = new Map(); // element → note and back
+  const noteEl = n => { const el = place(h('div', { className: 'note' + (tiles.sel.set.has(n) ? ' sel' : '') }), n); noteOf.set(el, n); elOf.set(n, el); return el; };
+  tiles.view.mark = () => { for (const [el, n] of noteOf) el.classList.toggle('sel', tiles.sel.set.has(n)); };
   const keys = h('div', {
     className: 'keys',
     onpointerdown: e => {
@@ -125,28 +174,31 @@ function pianoRoll(t, c) {
     onpointerdown: e => {
       if (e.button) return;
       const box = grid.getBoundingClientRect(), at = ev => ({ t: Math.floor((ev.clientX - box.left) / SW), n: HI - Math.floor((ev.clientY - box.top) / RH) });
-      // note elements stay in the same order as c.notes, so the DOM index finds the note
-      let el = e.target, note = c.notes[[...grid.querySelectorAll('.note')].indexOf(el)], mode = 'move', moved = false;
-      const p0 = at(e);
+      const p0 = at(e), clicked = noteOf.get(e.target);
+      tiles.cursor(c, clamp(p0.t, 0, c.len - 1));
+      if (mod(e)) return tiles.marquee(e, r => [...noteOf].filter(([el]) => tiles.touches(el, r)).map(([, n]) => n), clicked ?? null); // select: drag a box, or click a note
+      let el = e.target, note = clicked, mode = 'move', moved = false;
+      const group = note && tiles.sel.set.has(note) && tiles.selected(t, c).length > 1 ? tiles.selected(t, c) : null; // a selected note drags the whole selection
       snap();
+      if (!group) tiles.clear();
       if (!note) {
         note = { t: clamp(p0.t, 0, c.len - 1), d: ui.noteLen, n: clamp(p0.n, LO, HI) };
         c.notes.push(note); grid.append((el = noteEl(note))); moved = true; ping(t, note.n);
       } else if (e.offsetX > el.offsetWidth - 9) mode = 'size';
-      const n0 = { ...note };
+      const moving = group || [note], orig = moving.map(n => ({ ...n }));
       drag(ev => {
         const p = at(ev);
         if (!moved && p.t === p0.t && p.n === p0.n) return;
         moved = true;
-        if (mode === 'size') note.d = Math.max(1, n0.d + p.t - p0.t);
+        if (mode === 'size') moving.forEach((x, i) => { x.d = Math.max(1, orig[i].d + p.t - p0.t); });
         else {
-          note.t = clamp(n0.t + p.t - p0.t, 0, c.len - 1);
-          const n = clamp(n0.n + p.n - p0.n, LO, HI);
-          if (n !== note.n) { note.n = n; ping(t, n); }
+          const before = note.n, [dt, dn] = fitDelta(orig, p.t - p0.t, p.n - p0.n, c.len - 1, LO, HI);
+          moving.forEach((x, i) => { x.t = orig[i].t + dt; x.n = orig[i].n + dn; });
+          if (note.n !== before) ping(t, note.n);
         }
-        place(el, note);
+        moving.forEach(x => place(elOf.get(x), x));
       }, () => {
-        if (moved) ui.noteLen = note.d; else { c.notes.splice(c.notes.indexOf(note), 1); el.remove(); } // plain click on a note deletes it
+        if (moved) ui.noteLen = note.d; else { c.notes.splice(c.notes.indexOf(note), 1); el.remove(); noteOf.delete(el); elOf.delete(note); tiles.clear(); } // plain click on a note deletes it
         changed(true); redrawClip(t, c);
       });
     },
@@ -173,7 +225,7 @@ function waveEditor(t, c) {
         () => { if (!ui.wsel) seek(c.start + a / c.rate / sd); renderEditor(); });
     },
   }, cv, strip, selEl, keep, h('div', { className: 'rpos', hidden: true, data: { t: '' } }));
-  showSel(); requestAnimationFrame(() => cv.isConnected && drawWave(cv, buf, c.off, c.dur, '#d6d6d1'));
+  showSel(); requestAnimationFrame(() => cv.isConnected && drawWave(cv, buf, c.off, c.dur, css('--fg')));
 
   const s = ui.wsel, steps = sec => sec / c.rate / sd, piece = (from, start) => ({ ...c, id: uid(), start, off: c.off + from, dur: c.dur - from, fadeIn: 0 });
   const tool = (label, icon, fn, disabled, on) => h('button', {

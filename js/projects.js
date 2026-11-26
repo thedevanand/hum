@@ -1,9 +1,9 @@
 // The project screen: list, open, copy, delete.
 import * as E from './engine.js';
-import { openDefaults } from './dialogs.js';
+import { madeBy, openPrefs } from './dialogs.js';
 import { changed } from './edit.js';
 import { ago, exportHum } from './hum.js';
-import { S, blank, demo, redo, setS, ui, undo } from './state.js';
+import { APP, S, blank, demo, redo, setS, ui, undo } from './state.js';
 import { curId, flush, loadAssets, readIdx, readProj, setCurId, store, sweepAudio } from './storage.js';
 import { syncTransport } from './timeline.js';
 import { $, h, toast } from './util.js';
@@ -51,15 +51,17 @@ export function showHome() {
         localStorage.removeItem('hum.p.' + p.id); localStorage.setItem('hum.projects', JSON.stringify(readIdx().filter(x => x.id !== p.id))); sweepAudio(); showHome();
       } })));
   $('#pm').replaceChildren(
-    h('div', { className: 'masthead' }, h('img', { src: 'logo.png', alt: '', width: 72, height: 72 }), h('span', { className: 'brand' }, 'hum', h('i', { className: 'cur' })), h('span', { className: 'lab', textContent: 'a tiny beat maker' })),
+    h('div', { className: 'masthead' }, h('img', { src: 'logo.png', alt: '', width: 72, height: 72 }), h('span', { className: 'brand' }, 'hum', h('i', { className: 'cur' })), h('span', { className: 'lab', textContent: `a tiny beat maker · v${APP.version}` })),
     h('div', { className: 'pmhead' }, h('span', { className: 'grow' }),
-      h('button', { className: 'btn', textContent: 'defaults', title: 'Settings that apply to every project', onclick: openDefaults }),
+      h('button', { className: 'btn', textContent: 'preferences', title: 'Theme and settings that apply to every project', onclick: () => openPrefs('theme') }),
       h('button', { className: 'btn', textContent: 'import .hum', title: 'Open a project file from your computer', onclick: () => $('#hfile').click() }),
       h('button', { className: 'btn', textContent: 'demo song', onclick: () => createProject(true) }),
       h('button', { className: 'btn pri', textContent: 'new project', onclick: () => createProject() })),
     h('div', { className: 'pmrow pmcols' }, ...['name', 'tracks', 'bars', 'bpm', 'last used', ''].map(t => h('span', { textContent: t }))),
     ...idx.map(row),
     ...(idx.length ? [] : [h('div', { className: 'none', textContent: 'No projects yet. Start a new one, load the demo song, or import a .hum file.' })]),
-    h('div', { className: 'pmfoot', textContent: 'projects are stored in this browser. save .hum to keep a file on your disk, import .hum to bring one back. drop a .hum file anywhere on this page.' }));
+    h('div', { className: 'pmfoot' }, 'projects are stored in this browser. save .hum to keep a file on your disk, import .hum to bring one back. drop a .hum file anywhere on this page. ',
+      h('a', { className: 'link', href: 'https://forms.gle/zRYggNHsp3oqUY5m8', target: '_blank', rel: 'noopener', textContent: 'send feedback' })),
+    madeBy());
   $('#pm').hidden = false;
 }

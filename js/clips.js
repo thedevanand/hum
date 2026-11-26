@@ -2,6 +2,7 @@
 import * as E from './engine.js';
 import { freeStart, remapSteps } from './place.js';
 import { changed, edit, selClips, snap } from './edit.js';
+import { setBox, boxOpen } from './box.js';
 import { S, T, drumRows, pushTrack, soundName, ui } from './state.js';
 import { keepSound, loadAssets, sound } from './storage.js';
 import { $, clamp, toast, uid } from './util.js';
@@ -109,5 +110,6 @@ export const storeClips = (t, clips) => storeItem(itemOf(t, clips));
 export function storeItem(it) {
   const n = S.box.filter(b => b.type === it.type).length + 1;
   edit(() => S.box.push({ id: uid(), name: it.clips?.length > 1 ? `Section ${n}` : it.c.buf ? it.sname : `${it.type === 'drums' ? 'Beat' : 'Melody'} ${n}`, ...structuredClone(it) }));
+  if (!boxOpen()) setBox(true); // so you can see where it went
   toast('Stored in the box. Drag it back onto any track');
 }

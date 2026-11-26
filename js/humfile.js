@@ -26,6 +26,7 @@ function clip(c, type) {
   }
   if (c.buf !== undefined) return null; // an audio clip on a pattern track
   out.len = Math.max(1, Math.round(num(c.len, 16)));
+  out.pitch = Math.round(num(c.pitch, 0, -24, 24)); // transpose in semitones; a pattern from an older version has none
   if (type === 'drums') out.steps = Object.fromEntries(Object.entries(obj(c.steps)).filter(([, a]) => Array.isArray(a)));
   else out.notes = list(c.notes).filter(n => n && Number.isFinite(n.t) && Number.isFinite(n.d) && Number.isFinite(n.n));
   return out;

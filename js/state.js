@@ -5,7 +5,7 @@ import { $, uid } from './util.js';
 
 export const KEYS = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 export const COLORS = ['#e6b450', '#59c2ff', '#d2a6ff', '#95e6cb', '#f07178', '#aad94c']; // terminal palette, one per track
-export const APP = { name: 'hum', version: '0.3.0' };
+export const APP = { name: 'hum', version: '1.0.1' };
 export { FORMAT }; // .hum file layout version
 export const HEAD = 208, LO = 36, HI = 84, RH = 18, SW = 26; // track header px; piano roll range, row px, step px
 

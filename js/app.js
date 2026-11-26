@@ -2,17 +2,19 @@
 import * as E from './engine.js';
 import { ICON } from './icons.js';
 import { addTrack, copyClip, deleteClip, duplicateClip, importFiles, pasteClip, storeClips } from './clips.js';
-import { pasteToBox } from './box.js';
+import { boxOpen, pasteToBox, setBox } from './box.js';
 import { fill } from './controls.js';
-import { openCredits, openSettings, openShortcuts } from './dialogs.js';
+import { openChangelog, openCredits, openPrefs, openShortcuts } from './dialogs.js';
+import { applyTheme } from './theme.js';
 import { changed, edit, markSel, selClips, snap, travel } from './edit.js';
 import { renderEditor } from './editor.js';
 import { exportHum, importHumFiles } from './hum.js';
 import { renderLib } from './library.js';
 import { openMedia } from './media.js';
 import { openProject, showHome } from './projects.js';
-import { render, startFrames } from './render.js';
-import { HEAD, KEYS, LIB, LIBMAP, S, T, blank, demo, looping, redo, ui, undo } from './state.js';
+import { readColors, render, startFrames } from './render.js';
+import { tileKey } from './tiles.js';
+import { APP, G, HEAD, KEYS, LIB, LIBMAP, S, T, blank, demo, looping, redo, ui, undo } from './state.js';
 import { curId, readIdx, readProj, store, sweepAudio } from './storage.js';
 import { renderArr, syncTransport } from './timeline.js';
 import { exportWav, stopAll, togglePlay, toggleRec } from './transport.js';
@@ -25,10 +27,11 @@ $('#adders').append(...[['Drums', 'drums', () => addTrack('drums')], ['Piano', '
   ['Synth', 'synth', () => addTrack('inst', 'lead')], ['Audio', 'file', () => $('#file').click()]]
   .map(([label, , fn]) => h('button', { className: 'btn sm', onclick: fn, title: label === 'Audio' ? 'Import an audio file as a new track' : `Add a ${label.toLowerCase()} track` }, '+ ' + label)));
 
-$('#loop').innerHTML = ICON.repeat + 'loop'; $('#settings').innerHTML = ICON.gear;
+$('#ver').textContent = 'v' + APP.version;
+$('#loop').innerHTML = ICON.repeat + 'loop'; $('#prefs').innerHTML = ICON.gear;
 $('#loop').onclick = () => { S.loop = !looping(); changed(true); syncTransport(); };
 E.eng.onEnd = () => { ui.pos = 0; syncTransport(); };
-$('#settings').onclick = openSettings; $('#credits').onclick = openCredits; $('#keys').onclick = openShortcuts;
+$('#prefs').onclick = () => openPrefs('theme'); $('#credits').onclick = openCredits; $('#changelog').onclick = openChangelog; $('#boxbtn').onclick = () => setBox(!boxOpen()); $('#boxclose').onclick = () => setBox(false); $('#keys').onclick = openShortcuts;
 $('#play').onclick = togglePlay; $('#stop').onclick = stopAll; $('#rec').onclick = toggleRec;
 $('#undo').onclick = () => travel(undo, redo); $('#redo').onclick = () => travel(redo, undo);
 $('#export').onclick = exportWav;
@@ -72,6 +75,7 @@ addEventListener('keydown', e => {
   if (document.querySelector('.dlg')) return;
   if (e.target.matches('input:not([type=range]), select, textarea')) return;
   const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+  if (tileKey(e, mod, k)) return void e.preventDefault(); // selected notes / pads in the open pattern come first
   if (k === ' ') { e.preventDefault(); if (document.activeElement?.tagName === 'BUTTON') document.activeElement.blur(); togglePlay(); }
   else if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? travel(redo, undo) : travel(undo, redo); }
   else if (mod && k === 'd') { e.preventDefault(); duplicateClip(); }
@@ -91,6 +95,8 @@ addEventListener('resize', () => renderArr());
 addEventListener('storage', e => { if (curId && e.key === 'hum.p.' + curId) toast('This project was changed in another tab. Your next change will ask which version to keep.', 7000); }); // fires in the other tabs only
 
 // ---------- boot ----------
+applyTheme(); readColors(); setBox(G.boxOpen ?? innerWidth > 1100, false);
+$('#changelog').textContent = 'changelog · v' + APP.version;
 blank(); // placeholder so the editor DOM has something to draw while the project screen is up
 const legacy = localStorage.getItem('hum.project'); // single-project saves from before the project screen
 if (legacy) { try { const p = JSON.parse(legacy); if (p?.tracks) store({ name: 'my song', ...p }); localStorage.removeItem('hum.project'); } catch { /* corrupt: drop it */ } }

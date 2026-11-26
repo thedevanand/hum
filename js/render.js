@@ -5,6 +5,7 @@ import { ed, renderEditor } from './editor.js';
 import { renderLib } from './library.js';
 import { HEAD, S, SW, T, selClip, ui } from './state.js';
 import { playhead, renderArr, renderTop } from './timeline.js';
+import { css } from './theme.js';
 import { $, clock } from './util.js';
 
 export function render() {
@@ -15,7 +16,8 @@ export function render() {
   renderTop(); renderArr(); renderEditor(); renderLib(); renderBox();
 }
 const meter = $('#meter'), mg = meter.getContext('2d'), bins = new Uint8Array(E.analyser.frequencyBinCount);
-let lastStep = -2;
+let lastStep = -2, meterColor = '#d6d6d1';
+export const readColors = () => { meterColor = css('--fg'); }; // after a theme change
 let running = false;
 /** The animation loop stops itself while the project screen covers the editor; call this when the editor shows again. */
 export function startFrames() { if (!running) { running = true; requestAnimationFrame(frame); } }
@@ -38,7 +40,7 @@ function frame() {
     if (c.buf) line.dataset.t = clock(Math.max(0, rel) * E.stepSec(S));
   }
   E.analyser.getByteFrequencyData(bins);
-  mg.clearRect(0, 0, meter.width, meter.height); mg.fillStyle = '#d6d6d1';
+  mg.clearRect(0, 0, meter.width, meter.height); mg.fillStyle = meterColor;
   for (let i = 0; i < 32; i++) { const v = Math.max(2, (bins[i + 1] / 255) * meter.height); mg.fillRect(i * 6, meter.height - v, 4, v); }
   requestAnimationFrame(frame);
 }

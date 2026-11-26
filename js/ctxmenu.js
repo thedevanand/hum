@@ -5,10 +5,11 @@ import { renderEditor } from './editor.js';
 import { edit, select, selClips } from './edit.js';
 import { openMenu } from './menu.js';
 import { MOD } from './dialogs.js';
-import { uid } from './util.js';
+import { clamp, uid } from './util.js';
 
 const stepAt = (e, lane) => Math.max(0, (e.clientX - lane.getBoundingClientRect().left) / ui.sp);
 const pasteAt = (t, step) => { const it = readClipboard(); if (it) pasteItem(it, t.type === it.type ? t : S.tracks.find(x => x.type === it.type), step); };
+const shift = d => edit(() => selClips().forEach(x => (x.pitch = d ? clamp((x.pitch || 0) + d, -24, 24) : 0)));
 const tab = name => () => { ui.tab = name; renderEditor(); };
 
 export function showClipMenu(e, t, c) {
@@ -22,6 +23,10 @@ export function showClipMenu(e, t, c) {
     { label: 'duplicate' + many, key: MOD + 'D', run: duplicateClip },
     '-',
     { label: 'store in box', run: () => storeClips(t, selClips()) },
+    { label: 'pitch up (+1 st)', run: () => shift(1) },
+    { label: 'pitch down (−1 st)', run: () => shift(-1) },
+    { label: 'reset pitch', disabled: !selClips().some(x => x.pitch), run: () => shift(0) },
+    '-',
     { label: 'effects…', run: () => { ui.fxScope = 'clip'; tab('fx')(); } },
     { label: 'edit', run: tab('edit') },
     '-',

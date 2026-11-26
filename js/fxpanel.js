@@ -28,7 +28,7 @@ const labelOf = spec => (spec.scope === 'media' ? `sound ${soundName(spec.sid)}`
 export function applyFx(spec, items) {
   if (!items.length) return;
   if (spec.scope === 'clip') { ui.tid = spec.tid; ui.cid = spec.cid; } // the clip you dropped on becomes the selection
-  ui.fxScope = spec.scope;
+  ui.fxScope = spec.scope; ui.fxJump = true; // show the new effect at the end of the chain
   edit(() => chainOf(spec, true).push(...items));
   toast(`${items.length > 1 ? `${items.length} effects` : FX[items[0].fx].name} added to ${labelOf(spec)}`);
 }
@@ -42,7 +42,7 @@ export const dropFxOnLane = (t, e) => { if (!dragFx) return false; e.preventDefa
 
 const fmt = (u, v) => (u === 'hz' ? (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v < 10 ? v.toFixed(1) + ' hz' : Math.round(v) + ' hz')
   : u === 'pct' ? pct(v) : u === 'db' ? `${v > 0 ? '+' : ''}${Math.round(v * 2) / 2} db` : u === 'ms' ? v.toFixed(0) + ' ms' : u === 'sec' ? v.toFixed(1) + ' s'
-  : u === 'bit' ? v + ' bit' : u === 'x' ? (v < 10 ? v.toFixed(1) : Math.round(v)) + '×' : String(v));
+  : u === 'st' ? `${v > 0 ? '+' : ''}${v} st` : u === 'cent' ? `${v > 0 ? '+' : ''}${v} ct` : u === 'bit' ? v + ' bit' : u === 'x' ? (v < 10 ? v.toFixed(1) : Math.round(v)) + '×' : String(v));
 
 function control(item, q) {
   const val = item.p[q.k] ?? q.def;
@@ -84,27 +84,48 @@ function savePreset(list) {
   name.focus();
 }
 
-/** Effects and presets you can click or drag. */
+/** Effects and presets you can click or drag, with a search box on top. */
 function library(cur) {
-  const preset = (p, remove) => h('div', {
-    className: 'fxcard', draggable: true, title: 'Drag onto a clip, track or sound, or click to add to the selected one',
-    ondragstart: e => { dragFx = { preset: p }; e.dataTransfer.setData('text/plain', p.name); e.dataTransfer.effectAllowed = 'copy'; }, ondragend: () => (dragFx = null),
-    onclick: () => applyFx(cur, copyItems(p.fx)),
-  }, h('b', { textContent: p.name }), h('small', { textContent: p.fx.map(f => FX[f.fx]?.name).filter(Boolean).join(' · ') }),
-  remove && h('button', { className: 'ms del', textContent: '×', title: 'Delete preset', ariaLabel: `Delete ${p.name}`, onclick: e => { e.stopPropagation(); remove(); } }));
+  const words = ui.fxq ? ui.fxq.toLowerCase().split(/\s+/).filter(Boolean) : [];
+  const shown = text => words.every(w => text.includes(w));
+  const preset = (p, remove) => {
+    const text = (p.name + ' preset ' + p.fx.map(f => FX[f.fx]?.name).join(' ')).toLowerCase();
+    return h('div', {
+      className: 'fxcard', draggable: true, title: 'Drag onto a clip, track or sound, or click to add to the selected one', data: { s: text }, hidden: !shown(text),
+      ondragstart: e => { dragFx = { preset: p }; e.dataTransfer.setData('text/plain', p.name); e.dataTransfer.effectAllowed = 'copy'; }, ondragend: () => (dragFx = null),
+      onclick: () => applyFx(cur, copyItems(p.fx)),
+    }, h('b', { textContent: p.name }), h('small', { textContent: p.fx.map(f => FX[f.fx]?.name).filter(Boolean).join(' · ') }),
+    remove && h('button', { className: 'ms del', textContent: '×', title: 'Delete preset', ariaLabel: `Delete ${p.name}`, onclick: e => { e.stopPropagation(); remove(); } }));
+  };
+  const effect = key => {
+    const text = (FX[key].name + ' ' + FX[key].desc).toLowerCase();
+    return h('div', {
+      className: 'fxcard', draggable: true, title: FX[key].desc, data: { s: text }, hidden: !shown(text),
+      ondragstart: e => { dragFx = { fx: key }; e.dataTransfer.setData('text/plain', FX[key].name); e.dataTransfer.effectAllowed = 'copy'; }, ondragend: () => (dragFx = null),
+      onclick: () => applyFx(cur, [newItem(key)]),
+    }, h('b', { textContent: FX[key].name }), h('small', { textContent: FX[key].desc }));
+  };
   const groups = [
     ['project presets', S.fxPresets || [], p => edit(() => (S.fxPresets = S.fxPresets.filter(x => x !== p)))],
     ['global presets', globalPresets(), p => { localStorage.setItem(GKEY, JSON.stringify(globalPresets().filter(x => x.id !== p.id))); renderEditor(); }],
     ['built-in presets', factoryPresets(), null],
   ];
-  return h('div', { className: 'fxlib' },
-    h('div', { className: 'fxh', textContent: 'effects · drag onto a clip, track or sound' }),
-    ...FX_ORDER.map(key => h('div', {
-      className: 'fxcard', draggable: true, title: FX[key].desc,
-      ondragstart: e => { dragFx = { fx: key }; e.dataTransfer.setData('text/plain', FX[key].name); e.dataTransfer.effectAllowed = 'copy'; }, ondragend: () => (dragFx = null),
-      onclick: () => applyFx(cur, [newItem(key)]),
-    }, h('b', { textContent: FX[key].name }), h('small', { textContent: FX[key].desc }))),
-    ...groups.filter(([, list]) => list.length).flatMap(([title, list, del]) => [h('div', { className: 'fxh', textContent: title }), ...list.map(p => preset(p, del && (() => del(p))))]));
+  const lib = h('div', { className: 'fxlib' },
+    h('label', { className: 'search' }, '/', h('input', {
+      type: 'search', placeholder: 'search effects and presets', ariaLabel: 'Search effects', value: ui.fxq || '', spellcheck: false,
+      oninput: e => { // filter in place: re-rendering would drop the focus and the scroll position
+        ui.fxq = e.target.value; const w = ui.fxq.toLowerCase().split(/\s+/).filter(Boolean);
+        for (const el of lib.querySelectorAll('.fxcard')) el.hidden = !w.every(x => el.dataset.s.includes(x));
+        for (const g of lib.querySelectorAll('.fxgrp')) g.hidden = !g.querySelector('.fxcard:not([hidden])');
+        lib.querySelector('.none').hidden = !!lib.querySelector('.fxcard:not([hidden])');
+      },
+    })),
+    h('div', { className: 'fxgrp' }, h('div', { className: 'fxh', textContent: 'effects · drag onto a clip, track or sound' }), ...FX_ORDER.map(effect)),
+    ...groups.filter(([, list]) => list.length).map(([title, list, del]) => h('div', { className: 'fxgrp' }, h('div', { className: 'fxh', textContent: title }), ...list.map(p => preset(p, del && (() => del(p)))))),
+    h('div', { className: 'none', textContent: 'Nothing matches that search.', hidden: true }));
+  for (const g of lib.querySelectorAll('.fxgrp')) g.hidden = !g.querySelector('.fxcard:not([hidden])'); // not attached yet, but queries work
+  lib.querySelector('.none').hidden = !!lib.querySelector('.fxcard:not([hidden])');
+  return lib;
 }
 
 export function renderFx() {

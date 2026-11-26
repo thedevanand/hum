@@ -108,7 +108,7 @@ function clipEl(t, c) {
         if (!resize && overBox(ue)) { undo.pop(); group.forEach((x, i) => (x.start = starts[i])); storeClips(t, group); } else changed(); // dropped on the box: store copies, the clips stay put
       });
     },
-  }, cv, h('span', { className: 'nm', textContent: c.buf ? soundName(c.buf) : t.type === 'drums' ? 'Beat' : 'Melody' }), c.fx?.some(f => f.on !== false) && h('span', { className: 'fxb', textContent: 'fx', title: 'Has effects' }), h('i', { className: 'grip', title: 'Drag to resize' }));
+  }, cv, h('span', { className: 'nm', textContent: c.buf ? soundName(c.buf) : t.type === 'drums' ? 'Beat' : 'Melody' }), h('span', { className: 'bdg' }, c.pitch ? h('span', { className: 'fxb', textContent: (c.pitch > 0 ? '+' : '') + c.pitch + 'st', title: 'Pitch' }) : null, c.fx?.some(f => f.on !== false) && h('span', { className: 'fxb', textContent: 'fx', title: 'Has effects' })), h('i', { className: 'grip', title: 'Drag to resize' }));
   requestAnimationFrame(() => drawClip(cv, t, c));
   return el;
 }
